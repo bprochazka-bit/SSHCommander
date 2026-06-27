@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SSH reverse-forward inspector</title>
+<link rel="stylesheet" href="/static/vendor/xterm.css">
+<style>
+  :root {
+    --bg: #0e1116; --panel: #161b22; --line: #283042; --fg: #d6dde6;
+    --muted: #8893a4; --accent: #4ea1ff; --green: #51cf66; --amber: #ffc046;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  header {
+    padding: 14px 20px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: baseline; gap: 16px;
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header .meta { color: var(--muted); font-size: 12px; }
+  header button {
+    margin-left: auto; background: var(--panel); color: var(--fg);
+    border: 1px solid var(--line); padding: 6px 12px; border-radius: 6px;
+    cursor: pointer;
+  }
+  header button:hover { border-color: var(--accent); }
+  main { padding: 18px 20px; }
+  .warn {
+    background: #3a2a12; border: 1px solid var(--amber); color: var(--amber);
+    padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; font-size: 13px;
+  }
+  .conn {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; margin-bottom: 14px; overflow: hidden;
+  }
+  .conn-head {
+    padding: 12px 16px; display: flex; gap: 18px; align-items: center;
+    flex-wrap: wrap; border-bottom: 1px solid var(--line);
+  }
+  .client { font-size: 15px; font-weight: 600; }
+  .pill {
+    font-size: 11px; color: var(--muted); border: 1px solid var(--line);
+    padding: 2px 8px; border-radius: 99px;
+  }
+  .pill.fwd { color: var(--green); border-color: #234d2f; }
+  .pill.nofwd { color: var(--muted); }
+  .pill.cid { color: var(--accent); border-color: #234a6b; }
+  .pill.cid-missing { color: var(--amber); border-color: #4d3a12; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 16px; font-size: 13px; }
+  th { color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--line); }
+  tr + tr td { border-top: 1px solid #1d2330; }
+  td.acts { text-align: right; white-space: nowrap; }
+  .btn {
+    background: transparent; color: var(--accent); border: 1px solid var(--line);
+    padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 12px;
+    margin-left: 6px;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .empty { color: var(--muted); padding: 30px; text-align: center; }
+  .bind-public { color: var(--amber); }
+
+  /* terminal overlay */
+  #overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.6);
+    display: none; align-items: center; justify-content: center; z-index: 50;
+  }
+  #overlay.on { display: flex; }
+  #termbox {
+    width: min(960px, 94vw); height: min(620px, 88vh); background: #000;
+    border: 1px solid var(--line); border-radius: 8px; display: flex;
+    flex-direction: column; overflow: hidden;
+  }
+  #termbar {
+    background: var(--panel); padding: 8px 12px; display: flex; gap: 12px;
+    align-items: center; border-bottom: 1px solid var(--line); font-size: 13px;
+  }
+  #termbar .x { margin-left: auto; cursor: pointer; color: var(--muted); }
+  #termbar .x:hover { color: var(--fg); }
+  #term { flex: 1; padding: 6px; }
+  .modal {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 20px; width: 320px;
+  }
+  .modal h3 { margin: 0 0 12px; font-size: 14px; }
+  .modal label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  .modal input {
+    width: 100%; background: #0b0e13; color: var(--fg); border: 1px solid var(--line);
+    border-radius: 6px; padding: 7px 9px; font: inherit;
+  }
+  .modal .row { display: flex; gap: 10px; margin-top: 16px; }
+  .modal .row .btn { flex: 1; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>SSH reverse-forward inspector</h1>
+  <span class="meta" id="meta"></span>
+  <button id="refresh">refresh</button>
+</header>
+<main>
+  <div id="warn" class="warn" style="display:none"></div>
+  <div id="list"></div>
+</main>
+
+<div id="overlay">
+  <div id="termbox" style="display:none">
+    <div id="termbar">
+      <span id="termtitle"></span>
+      <span class="x" id="termclose">close ✕</span>
+    </div>
+    <div id="term"></div>
+  </div>
+  <div class="modal" id="authmodal" style="display:none">
+    <h3 id="authtitle">SSH to forwarded port</h3>
+    <label>username</label>
+    <input id="auth-user" autocomplete="off">
+    <label>password</label>
+    <input id="auth-pass" type="password" autocomplete="off">
+    <div class="row">
+      <button class="btn" id="auth-cancel">cancel</button>
+      <button class="btn" id="auth-go">connect</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/vendor/xterm.js"></script>
+<script src="/static/vendor/xterm-addon-fit.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

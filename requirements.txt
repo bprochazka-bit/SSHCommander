@@ -1,0 +1,19 @@
+# Debian 13 (trixie) ships all of these upstream -- prefer apt over pip:
+#
+#   sudo apt install python3-fastapi python3-uvicorn python3-asyncssh \
+#                    python3-httpx python3-websockets
+#
+# Optional uvicorn speedups: python3-uvloop python3-httptools
+#
+# PyPI name -> Debian package, for reference if you ever do use pip/venv:
+#   fastapi      -> python3-fastapi
+#   uvicorn      -> python3-uvicorn   (+ python3-websockets for ws support)
+#   asyncssh     -> python3-asyncssh
+#   httpx        -> python3-httpx
+#
+# The pinned PyPI specifiers below are only for a non-Debian / venv install.
+fastapi>=0.110
+uvicorn>=0.29
+websockets>=11
+asyncssh>=2.14
+httpx>=0.27
