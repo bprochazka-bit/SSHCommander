@@ -117,6 +117,7 @@ app.py         FastAPI: /api/connections, /proxy/{port}, ws /ws/ssh/{port}
 authlog.py     optional: clientID from SSH-cert identity in the auth log
 vendor.py      downloads xterm.js into static/vendor (run once)
 static/        index.html, app.js, vendor/ (xterm.js + fit addon + css)
+docs/          design notes: dead-connection detection, in-band forward control
 ```
 
 ## Setup (Debian 13 / trixie, no pip)
@@ -150,11 +151,29 @@ Without it you only see your own sessions and the UI shows a warning.
   `host:port` link from your laptop would hit *your* machine, not the server.
   The built-in proxy is best-effort (good for simple pages and APIs; apps with
   absolute asset paths or websockets may need `GatewayPorts` + a direct link).
-- **terminal**: prompts for username/password, then SSHes to
+- **terminal**: prompts for credentials, then SSHes to
   `127.0.0.1:<forward_port>` and bridges a PTY shell to xterm.js. This is the
   natural fit for the common `ssh -R 2222:localhost:22` reverse-shell pattern,
   where the forward exposes an SSH server. You need valid credentials for
-  whatever is on the far end; set `SSHRF_CLIENT_KEY=/path/to/key` to offer a key.
+  whatever is on the far end; set `SSHRF_CLIENT_KEY=/path/to/key` to offer a
+  server-wide key, or upload a per-session private key in the auth dialog (see
+  below). The **terminal** and **files** actions only appear on forwards whose
+  far end answered with an SSH banner (auto-detected and cached); other forwards
+  offer **browse**.
+- **files**: opens an SFTP file browser over that same SSH forward — list,
+  download, upload, mkdir, delete. Uses the identical auth dialog as the
+  terminal. Transfers are held in memory and capped at 25 MB per file.
+- **private-key auth**: the auth dialog has a "use a private key instead"
+  section — paste a PEM key (or load it from a file) plus an optional
+  passphrase. The key is used for that one terminal/SFTP session only, kept in
+  memory, and never written to disk. Keep the app behind a loopback tunnel
+  (see "Lock it down"): the key rides the same WebSocket the password already
+  uses.
+- **set clientID**: a connection that shows "no clientID" can be given a
+  temporary label — click the amber pill and type one. The label lives in the
+  server's memory only, applies until that connection closes, and resets when
+  the app restarts. (For durable, trustworthy identities use the AcceptEnv or
+  certificate paths above.)
 
 (term.js is abandoned; this vendors xterm.js, its maintained successor, with no
 bundler step via the UMD builds.)

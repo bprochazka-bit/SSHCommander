@@ -62,6 +62,10 @@
   .btn:hover { border-color: var(--accent); }
   .empty { color: var(--muted); padding: 30px; text-align: center; }
   .bind-public { color: var(--amber); }
+  .ssh-yes { color: var(--green); }
+  .pill.cid, .pill.cid-missing { cursor: pointer; }
+  .pill.cid:hover, .pill.cid-missing:hover { border-color: var(--accent); }
+  .pill.cid.manual { color: var(--green); border-color: #234d2f; }
 
   /* terminal overlay */
   #overlay {
@@ -93,6 +97,46 @@
   }
   .modal .row { display: flex; gap: 10px; margin-top: 16px; }
   .modal .row .btn { flex: 1; text-align: center; }
+  .modal textarea {
+    width: 100%; background: #0b0e13; color: var(--fg); border: 1px solid var(--line);
+    border-radius: 6px; padding: 7px 9px; font: 11px/1.4 ui-monospace, monospace;
+    resize: vertical; min-height: 54px;
+  }
+  .modal input[type=file] { font-size: 11px; color: var(--muted); }
+  .modal details { margin-top: 12px; }
+  .modal summary { font-size: 12px; color: var(--accent); cursor: pointer; }
+
+  /* sftp browser overlay */
+  #sftpoverlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.6);
+    display: none; align-items: center; justify-content: center; z-index: 50;
+  }
+  #sftpoverlay.on { display: flex; }
+  #sftpbox {
+    width: min(820px, 94vw); height: min(620px, 88vh); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 8px; display: flex;
+    flex-direction: column; overflow: hidden;
+  }
+  #sftpbar {
+    background: #11161e; padding: 8px 12px; display: flex; gap: 10px;
+    align-items: center; border-bottom: 1px solid var(--line); font-size: 13px;
+  }
+  #sftpbar .x { margin-left: auto; cursor: pointer; color: var(--muted); }
+  #sftpbar .x:hover { color: var(--fg); }
+  #sftptools {
+    padding: 6px 12px; display: flex; gap: 8px; align-items: center;
+    border-bottom: 1px solid var(--line); font-size: 12px;
+  }
+  #sftppath { color: var(--muted); margin-left: 6px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  #sftperr {
+    display: none; background: #3a1212; border-bottom: 1px solid #6b2323;
+    color: #ff9a9a; padding: 6px 12px; font-size: 12px;
+  }
+  #sftpbody { flex: 1; overflow: auto; }
+  table.sftp td a { color: var(--accent); text-decoration: none; }
+  table.sftp td a:hover { text-decoration: underline; }
+  table.sftp td.num, table.sftp th.num { text-align: right; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -120,10 +164,39 @@
     <input id="auth-user" autocomplete="off">
     <label>password</label>
     <input id="auth-pass" type="password" autocomplete="off">
+    <details>
+      <summary>use a private key instead</summary>
+      <label>private key (PEM)</label>
+      <textarea id="auth-key" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" autocomplete="off"></textarea>
+      <label>…or load from file</label>
+      <input id="auth-keyfile" type="file" onchange="loadKeyFile(this)">
+      <label>key passphrase (if any)</label>
+      <input id="auth-keypass" type="password" autocomplete="off">
+    </details>
     <div class="row">
       <button class="btn" id="auth-cancel">cancel</button>
       <button class="btn" id="auth-go">connect</button>
     </div>
+  </div>
+</div>
+
+<div id="sftpoverlay">
+  <div id="sftpbox">
+    <div id="sftpbar">
+      <span id="sftptitle"></span>
+      <span class="x" onclick="closeSftp()">close ✕</span>
+    </div>
+    <div id="sftptools">
+      <button class="btn" onclick="sftpUp()">up</button>
+      <button class="btn" onclick="sftpRefresh()">refresh</button>
+      <button class="btn" onclick="sftpMkdir()">mkdir</button>
+      <label class="btn" style="cursor:pointer">upload
+        <input type="file" style="display:none" onchange="sftpUpload(this)">
+      </label>
+      <span id="sftppath"></span>
+    </div>
+    <div id="sftperr"></div>
+    <div id="sftpbody"></div>
   </div>
 </div>
 

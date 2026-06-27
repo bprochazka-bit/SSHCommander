@@ -14,6 +14,7 @@ Needs root to read other users' /proc/<pid>/fd. Works on classic OpenSSH
 import os
 import re
 import glob
+import time
 import socket
 
 import authlog
@@ -39,6 +40,34 @@ TCP_STATES = {
     "07": "CLOSE",       "08": "CLOSE_WAIT","09": "LAST_ACK",
     "0A": "LISTEN",      "0B": "CLOSING",
 }
+
+# A reverse forward only supports the SFTP/terminal actions when the far end is
+# an SSH server (the common `ssh -R 2222:localhost:22` reverse-shell). Detect it
+# by reading the protocol banner ("SSH-..."), cached so the UI's 8s poll does
+# not reopen a tunnel to every client each cycle.
+_SSH_PROBE_CACHE = {}  # port -> (timestamp, is_ssh)
+_SSH_PROBE_TTL = 30.0
+
+
+def _probe_ssh(port, host="127.0.0.1", timeout=0.25):
+    """True if 127.0.0.1:port greets us with an SSH banner. Best-effort: any
+    socket error (refused, timeout, non-SSH service) just means 'not SSH'."""
+    try:
+        with socket.create_connection((host, port), timeout=timeout) as s:
+            s.settimeout(timeout)
+            return s.recv(4) == b"SSH-"
+    except OSError:
+        return False
+
+
+def _probe_ssh_cached(port):
+    now = time.time()
+    hit = _SSH_PROBE_CACHE.get(port)
+    if hit and now - hit[0] < _SSH_PROBE_TTL:
+        return hit[1]
+    val = _probe_ssh(port)
+    _SSH_PROBE_CACHE[port] = (now, val)
+    return val
 
 
 def _parse_v4(token):
@@ -340,7 +369,8 @@ def scan(ssh_ports=None):
             "server_port": inbound["local_port"],
             "forwards": sorted(
                 ({"bind_ip": f["local_ip"], "port": f["local_port"],
-                  "family": f["family"]} for f in g["forwards"].values()),
+                  "family": f["family"], "ssh": _probe_ssh_cached(f["local_port"])}
+                 for f in g["forwards"].values()),
                 key=lambda x: x["port"],
             ),
         })
