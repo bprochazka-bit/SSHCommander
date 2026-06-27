@@ -90,9 +90,15 @@ function renderConn(c) {
     : `<span class="pill cid-missing" title="click to set a temporary clientID"
              onclick="setClientId(${cidArgs})">no clientID — set</span>`;
 
-  return `<div class="conn">
+  // Heuristic dead-peer flag from the kernel's TCP counters (see scanner.py).
+  const stale = c.stale
+    ? `<span class="pill stale" title="${c.tx_queue} B unacked, ${c.retransmits} retransmits — peer may be gone">stale?</span>`
+    : "";
+
+  return `<div class="conn${c.stale ? " stale" : ""}">
     <div class="conn-head">
       <span class="client">${esc(c.client_ip)}:${c.client_port}</span>
+      ${stale}
       ${cid}
       <span class="pill">user ${esc(c.username)}</span>
       <span class="pill">pid ${c.pid}</span>

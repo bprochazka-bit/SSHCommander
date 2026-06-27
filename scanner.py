@@ -95,11 +95,20 @@ def _read_net_tcp(path, parser, family):
                     continue
                 local_ip, local_port = parser(p[1])
                 remote_ip, remote_port = parser(p[2])
+                # tx_queue (p[4], before the ':') is unacked bytes sitting in the
+                # send buffer; retransmits (p[6]) is the unrecovered RTO count.
+                # Together they flag a peer that has gone silent mid-send.
+                try:
+                    tx_queue = int(p[4].split(":", 1)[0], 16)
+                    retransmits = int(p[6], 16)
+                except (ValueError, IndexError):
+                    tx_queue = retransmits = 0
                 rows[int(p[9])] = {  # key is socket inode
                     "family": family,
                     "local_ip": local_ip, "local_port": local_port,
                     "remote_ip": remote_ip, "remote_port": remote_port,
                     "state": TCP_STATES.get(p[3].upper(), p[3]),
+                    "tx_queue": tx_queue, "retransmits": retransmits,
                 }
     except FileNotFoundError:
         pass
@@ -358,6 +367,12 @@ def scan(ssh_ports=None):
                 if client_id:
                     break
         inbound = g["inbound"]
+        # Heuristic dead-peer flag: data is queued to send but unacked while the
+        # retransmit count climbs -> the client is almost certainly gone, even
+        # though the kernel still reports ESTABLISHED. Requiring both avoids
+        # flagging a healthy connection that merely has bytes in flight.
+        tx_queue = inbound.get("tx_queue", 0)
+        retransmits = inbound.get("retransmits", 0)
         connections.append({
             "pid": rep["pid"],
             "pids": sorted(c["pid"] for c in g["candidates"]),
@@ -367,6 +382,9 @@ def scan(ssh_ports=None):
             "client_ip": inbound["remote_ip"],
             "client_port": inbound["remote_port"],
             "server_port": inbound["local_port"],
+            "stale": tx_queue > 0 and retransmits > 0,
+            "tx_queue": tx_queue,
+            "retransmits": retransmits,
             "forwards": sorted(
                 ({"bind_ip": f["local_ip"], "port": f["local_port"],
                   "family": f["family"], "ssh": _probe_ssh_cached(f["local_port"])}
@@ -388,7 +406,9 @@ def scan(ssh_ports=None):
                     c["client_ip"], c["client_port"], table=table, id_map=id_map
                 )
 
-    connections.sort(key=lambda c: (c["client_ip"], c["client_port"]))
+    # Stale (likely-dead) sessions sink to the bottom; healthy ones keep their
+    # stable (ip, port) ordering above them.
+    connections.sort(key=lambda c: (c["stale"], c["client_ip"], c["client_port"]))
     return {
         "ssh_ports": sorted(listener_ports),
         "privileged": os.geteuid() == 0,

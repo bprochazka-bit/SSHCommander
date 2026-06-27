@@ -103,9 +103,14 @@ pattern) and only escalate to it for connections Signal A already flagged.
 2. Carry them onto the inbound socket info and into each connection's JSON as
    `stale: bool` (true when `tx_queue > 0` and retransmits are advancing) plus
    the raw numbers for tooltip detail.
-3. In the UI, render a red **"stale?"** pill on flagged connections and sort
-   them to the top. Keep it advisory — the session is still shown until it
-   actually closes; we are only saying "this one looks dead."
+3. In the UI, render a red **"stale?"** pill on flagged connections, dim their
+   card, and sort them to the **bottom** of the list so healthy sessions stay
+   up top. Keep it advisory — the session is still shown until it actually
+   closes; we are only saying "this one looks dead."
+
+> Implemented: `scanner.py` parses `tx_queue`/`retransmits`, sets `stale` when
+> both are non-zero, and sorts stale sessions last; the UI renders the pill and
+> dims the card (`static/app.js`, `static/index.html`).
 4. (Optional) Gate Signal C behind Signal A so the active probe only runs for
    already-suspect sessions.
 
